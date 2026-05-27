@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="수위 모니터">
+  <meta name="theme-color" content="#ffffff">
+  <title>수위 실시간 모니터</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      min-height: 100vh;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* 헤더 */
+    .header {
+      background: #fff;
+      border-bottom: 1px solid #e5e5ea;
+      padding: 14px 20px;
+      padding-top: calc(14px + env(safe-area-inset-top));
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-icon { font-size: 22px; }
+    .header-title { font-size: 17px; font-weight: 600; color: #1d1d1f; }
+    .header-sub { font-size: 11px; color: #8e8e93; margin-top: 1px; }
+    .status-badge {
+      margin-left: auto;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge-ok { background: #d4edda; color: #155724; }
+    .badge-no { background: #f8d7da; color: #721c24; }
+
+    /* 컨텐츠 */
+    .content { padding: 16px; max-width: 480px; margin: 0 auto; }
+
+    /* 카드 */
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #8e8e93;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    /* 입력 */
+    .form-group { margin-bottom: 12px; }
+    .form-group label { font-size: 12px; color: #8e8e93; display: block; margin-bottom: 5px; }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #e5e5ea;
+      border-radius: 10px;
+      font-size: 15px;
+      color: #1d1d1f;
+      background: #f9f9f9;
+      outline: none;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: #007aff; background: #fff; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* 버튼 */
+    .btn {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); opacity: 0.85; }
+    .btn-primary { background: #007aff; color: #fff; }
+    .btn-primary:disabled { background: #aeaeb2; }
+    .btn-danger { background: #ff3b30; color: #fff; }
+    .btn-secondary {
+      background: #f2f2f7;
+      color: #007aff;
+      font-size: 14px;
+      padding: 10px;
+    }
+
+    .btn-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .btn-sm {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #007aff;
+      color: #fff;
+      white-space: nowrap;
+    }
+    .btn-sm-danger {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #fff0f0;
+      color: #ff3b30;
+      white-space: nowrap;
+    }
+
+    /* 체크박스 */
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .checkbox-row input[type=checkbox] { width: 18px; height: 18px; accent-color: #007aff; }
+    .checkbox-row label { font-size: 14px; color: #1d1d1f; }
+
+    /* 오류 */
+    .error-text { font-size: 13px; color: #ff3b30; margin-top: 8px; display: none; }
+
+    /* 수치 카드 그리드 */
+    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .metric-card {
+      background: #f2f2f7;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .metric-label { font-size: 12px; color: #8e8e93; margin-bottom: 4px; }
+    .metric-value { font-size: 24px; font-weight: 600; color: #1d1d1f; }
+    .metric-sub { font-size: 11px; color: #8e8e93; margin-top: 3px; }
+    .up { color: #ff3b30; }
+    .down { color: #007aff; }
+    .flat { color: #34c759; }
+
+    /* 상태 */
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 0;
+      color: #8e8e93;
+      font-size: 14px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid #e5e5ea;
+      border-top-color: #007aff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 오류 카드 */
+    .error-card {
+      background: #fff5f5;
+      border: 1px solid #ffd0ce;
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .error-card-title { font-size: 14px; font-weight: 600; color: #ff3b30; margin-bottom: 4px; }
+    .error-card-msg { font-size: 13px; color: #c0392b; }
+
+    /* 차트 */
+    .chart-wrap { position: relative; width: 100%; height: 200px; }
+
+    /* 측정소명 */
+    .station-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1d1d1f;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .refresh-btn {
+      font-size: 13px;
+      color: #007aff;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    .refresh-btn:active { background: #f0f0f0; }
+
+    /* 마지막 업데이트 */
+    .last-updated { font-size: 11px; color: #aeaeb2; text-align: center; padding: 8px 0 20px; }
+
+    /* 설치 안내 */
+    .install-hint {
+      background: #fff;
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      font-size: 13px;
+      color: #636366;
+      line-height: 1.6;
+    }
+    .install-hint strong { color: #1d1d1f; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <span class="header-icon">🌊</span>
+  <div>
+    <div class="header-title">수위 실시간 모니터</div>
+    <div class="header-sub">AlertNepal.online</div>
+  </div>
+  <span id="loginStatus" class="status-badge badge-no">미로그인</span>
+</div>
+
+<div class="content">
+
+  <!-- 로그인 카드 -->
+  <div id="loginPanel" class="card">
+    <div class="card-title">🔒 로그인</div>
+    <div class="form-group">
+      <label>이메일</label>
+      <input type="email" id="email" placeholder="your@email.com" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>비밀번호</label>
+      <input type="password" id="pw" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="remember" checked>
+      <label for="remember">로그인 상태 유지</label>
+    </div>
+    <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">로그인</button>
+    <p id="loginErr" class="error-text"></p>
+    <p style="font-size:11px;color:#aeaeb2;margin-top:10px;">🔐 비밀번호는 이 기기에만 저장됩니다.</p>
+  </div>
+
+  <!-- 설정 카드 -->
+  <div id="settingsPanel" class="card hidden">
+    <div class="card-title">⚙️ 측정 설정</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Series ID</label>
+        <input type="number" id="seriesId" value="7627">
+      </div>
+      <div class="form-group">
+        <label>GSS Name</label>
+        <input type="text" id="gssName" value="rts-gss">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>측정소 이름</label>
+      <input type="text" id="stationName" value="Bhotekoshi at Timure Tatopani">
+    </div>
+    <div class="form-group">
+      <label>조회 기간</label>
+      <select id="rangeHours">
+        <option value="6">최근 6시간</option>
+        <option value="12">최근 12시간</option>
+        <option value="24" selected>최근 24시간</option>
+        <option value="48">최근 48시간</option>
+        <option value="72">최근 72시간</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn-sm" onclick="fetchData()">🔄 조회</button>
+      <button class="btn-sm-danger" onclick="doLogout()">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- 로딩 -->
+  <div id="statusArea" class="hidden">
+    <div class="loading">
+      <div class="spinner"></div>
+      <span id="statusMsg">데이터 불러오는 중...</span>
+    </div>
+  </div>
+
+  <!-- 오류 -->
+  <div id="errorArea" class="error-card hidden">
+    <div class="error-card-title">⚠️ 오류</div>
+    <div id="errorMsg" class="error-card-msg"></div>
+  </div>
+
+  <!-- 수치 -->
+  <div id="metricsArea" class="hidden">
+    <div class="station-name">
+      <span id="stationLabel"></span>
+      <button class="refresh-btn" onclick="fetchData()">↻ 새로고침</button>
+    </div>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">최신 수위</div>
+        <div class="metric-value" id="latestVal">—</div>
+        <div class="metric-sub" id="latestTime">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">추세</div>
+        <div class="metric-value" id="trendVal">—</div>
+        <div class="metric-sub" id="trendDiff">—</div>
+      </div>
+    </div>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">기간 최고</div>
+        <div class="metric-value" style="font-size:20px;" id="maxVal">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">기간 최저</div>
+        <div class="metric-value" style="font-size:20px;" id="minVal">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 차트 -->
+  <div id="chartArea" class="card hidden">
+    <div class="card-title" id="chartTitle">수위 변화</div>
+    <div class="chart-wrap">
+      <canvas id="waterChart"></canvas>
+    </div>
+  </div>
+
+  <div id="lastUpdated" class="last-updated hidden"></div>
+
+  <!-- 홈화면 설치 안내 (iOS Safari에서만 표시) -->
+  <div id="installHint" class="install-hint hidden">
+    📱 <strong>홈화면에 추가하기</strong><br>
+    Safari 하단 공유 버튼(□↑) → <strong>홈 화면에 추가</strong> → 추가<br>
+    앱처럼 사용할 수 있습니다.
+  </div>
+
+</div>
+
+<script>
+const PROXY = 'https://alertnepal-proxy.osooson.workers.dev';
+const TK = 'an_token', CR = 'an_cred', ST = 'an_settings';
+let chartInst = null;
+
+const $ = id => document.getElementById(id);
+const show = id => $(id).classList.remove('hidden');
+const hide = id => $(id).classList.add('hidden');
+
+// iOS Safari 감지 → 설치 안내 표시
+if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) {
+  show('installHint');
+}
+
+function saveSettings() {
+  localStorage.setItem(ST, JSON.stringify({
+    seriesId: $('seriesId').value,
+    gssName: $('gssName').value,
+    stationName: $('stationName').value,
+    rangeHours: $('rangeHours').value
+  }));
+}
+
+function loadSettings() {
+  const s = JSON.parse(localStorage.getItem(ST) || '{}');
+  if (s.seriesId) $('seriesId').value = s.seriesId;
+  if (s.gssName) $('gssName').value = s.gssName;
+  if (s.stationName) $('stationName').value = s.stationName;
+  if (s.rangeHours) $('rangeHours').value = s.rangeHours;
+}
+
+function setStatus(loggedIn, name) {
+  const el = $('loginStatus');
+  el.textContent = loggedIn ? name : '미로그인';
+  el.className = 'status-badge ' + (loggedIn ? 'badge-ok' : 'badge-no');
+}
+
+function getToken() { return localStorage.getItem(TK) || sessionStorage.getItem(TK); }
+
+async function login(email, password) {
+  const res = await fetch(PROXY + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, stay: false })
+  });
+  if (!res.ok) {
+    let msg = '이메일 또는 비밀번호가 올바르지 않습니다.';
+    try { const d = await res.json(); msg = d.detail || d.message || d.non_field_errors?.[0] || msg; } catch(e) {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  const token = data.token || data.access || data.key || data.auth_token
+    || (data.data && (data.data.token || data.data.access)) || null;
+  if (!token) throw new Error('토큰을 받지 못했습니다: ' + JSON.stringify(data).slice(0, 80));
+  return token;
+}
+
+async function doLogin() {
+  const email = $('email').value.trim();
+  const pw = $('pw').value;
+  const remember = $('remember').checked;
+  const errEl = $('loginErr');
+  const btn = $('loginBtn');
+
+  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력하세요.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = '로그인 중...'; errEl.style.display = 'none';
+
+  try {
+    const token = await login(email, pw);
+    if (remember) {
+      localStorage.setItem(TK, token);
+      localStorage.setItem(CR, JSON.stringify({ email, pw }));
+    } else {
+      sessionStorage.setItem(TK, token);
+    }
+    btn.disabled = false; btn.textContent = '로그인';
+    onLoggedIn(email);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '로그인';
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+function onLoggedIn(email) {
+  hide('loginPanel');
+  show('settingsPanel');
+  loadSettings();
+  setStatus(true, email.split('@')[0]);
+  fetchData();
+}
+
+function doLogout() {
+  localStorage.removeItem(TK); localStorage.removeItem(CR);
+  sessionStorage.removeItem(TK);
+  hide('settingsPanel'); hide('metricsArea'); hide('chartArea');
+  hide('errorArea'); hide('lastUpdated');
+  show('loginPanel');
+  setStatus(false, '');
+  $('loginErr').style.display = 'none';
+  $('pw').value = '';
+}
+
+function getApiUrl() {
+  const sid = $('seriesId').value.trim();
+  const gss = $('gssName').value.trim();
+  const hours = parseInt($('rangeHours').value);
+  const now = new Date();
+  const from = new Date(now - hours * 3600000);
+  const fmt = d => d.toISOString().slice(0, 19);
+  return `${PROXY}/helper/api/observation?series_id=${sid}&date_from=${fmt(from)}&date_to=${fmt(now)}&gssname=${gss}`;
+}
+
+async function fetchData() {
+  saveSettings();
+  let token = getToken();
+  if (!token) return;
+
+  const stationName = $('stationName').value.trim() || '측정소';
+  hide('errorArea'); hide('metricsArea'); hide('chartArea'); hide('lastUpdated');
+  show('statusArea'); $('statusMsg').textContent = '데이터 불러오는 중...';
+
+  try {
+    let res = await fetch(getApiUrl(), {
+      headers: { 'Authorization': `Token ${token}`, 'Accept': 'application/json' }
+    });
+
+    if (res.status === 401) {
+      const cred = JSON.parse(localStorage.getItem(CR) || 'null');
+      if (cred) {
+        $('statusMsg').textContent = '토큰 갱신 중...';
+        try {
+          const newToken = await login(cred.email, cred.pw);
+          localStorage.setItem(TK, newToken);
+          token = newToken;
+          res = await fetch(getApiUrl(), {
+            headers: { 'Authorization': `Token ${token}`, 'Accept': 'application/json' }
+          });
+        } catch(e) { doLogout(); return; }
+      } else { doLogout(); return; }
+    }
+
+    if (!res.ok) throw new Error(`서버 오류 HTTP ${res.status}`);
+    const json = await res.json();
+    const raw = Array.isArray(json) ? json : (json.data || json.results || json.observations || []);
+    if (!raw || raw.length === 0) throw new Error('해당 기간에 데이터가 없습니다.');
+
+    const pts = raw.map(d => ({
+      t: new Date(d.time || d.datetime || d.timestamp || d.date || Object.values(d)[0]),
+      v: parseFloat(d.value || d.water_level || d.level || Object.values(d)[1])
+    })).filter(p => !isNaN(p.v)).sort((a, b) => a.t - b.t);
+
+    if (!pts.length) throw new Error('유효한 수위 데이터가 없습니다.');
+
+    const vals = pts.map(p => p.v);
+    const latest = pts[pts.length - 1];
+    const prev = pts.length > 5 ? pts[pts.length - 6] : pts[0];
+    const diff = latest.v - prev.v;
+
+    $('stationLabel').textContent = stationName;
+    $('latestVal').textContent = latest.v.toFixed(2) + ' m';
+    $('latestTime').textContent = latest.t.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    const tv = $('trendVal'), td = $('trendDiff');
+    if (Math.abs(diff) < 0.005) {
+      tv.textContent = '→ 안정'; tv.className = 'metric-value flat'; td.textContent = '변화 없음';
+    } else if (diff > 0) {
+      tv.textContent = '↑ 상승'; tv.className = 'metric-value up'; td.textContent = '+' + diff.toFixed(3) + ' m';
+    } else {
+      tv.textContent = '↓ 하강'; tv.className = 'metric-value down'; td.textContent = diff.toFixed(3) + ' m';
+    }
+
+    $('maxVal').textContent = Math.max(...vals).toFixed(2) + ' m';
+    $('minVal').textContent = Math.min(...vals).toFixed(2) + ' m';
+    $('chartTitle').textContent = stationName + ' · 수위 변화';
+
+    const labels = pts.map(p =>
+      `${p.t.getMonth()+1}/${p.t.getDate()} ${String(p.t.getHours()).padStart(2,'0')}:${String(p.t.getMinutes()).padStart(2,'0')}`
+    );
+    const minV = Math.min(...vals), maxV = Math.max(...vals), pad = (maxV - minV) * 0.15 || 0.1;
+
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
+    chartInst = new Chart($('waterChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: '수위(m)', data: vals,
+          borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.08)',
+          borderWidth: 2, pointRadius: pts.length > 100 ? 0 : 2,
+          pointHoverRadius: 5, fill: true, tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.y.toFixed(3) + ' m' } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#8e8e93' }, grid: { color: 'rgba(0,0,0,0.05)' } },
+          y: {
+            min: parseFloat((minV - pad).toFixed(2)), max: parseFloat((maxV + pad).toFixed(2)),
+            ticks: { font: { size: 10 }, color: '#8e8e93', callback: v => v.toFixed(1) + 'm' },
+            grid: { color: 'rgba(0,0,0,0.05)' }
+          }
+        }
+      }
+    });
+
+    hide('statusArea'); show('metricsArea'); show('chartArea'); show('lastUpdated');
+    $('lastUpdated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
+
+  } catch(e) {
+    hide('statusArea'); show('errorArea');
+    $('errorMsg').textContent = e.message;
+  }
+}
+
+// Enter 키로 로그인
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !$('loginPanel').classList.contains('hidden')) doLogin();
+});
+
+// 초기화
+(function init() {
+  const token = getToken();
+  const cred = JSON.parse(localStorage.getItem(CR) || 'null');
+  if (cred) $('email').value = cred.email;
+  if (token && cred) { onLoggedIn(cred.email); }
+  else { setStatus(false, ''); }
+})();
+</script>
+</body>
+</html>
