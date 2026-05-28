@@ -271,12 +271,17 @@
     <div class="card-title">⚙️ 측정 설정</div>
     <input type="hidden" id="seriesId" value="7627">
     <input type="hidden" id="gssName" value="rts-gss">
+    <input type="hidden" id="rangeHours" value="24">
     <div class="form-group">
       <label>측정 위치</label>
-      <input type="text" id="stationName" value="Bhotekoshi at Timure Tatopani">
+      <select id="stationSelect" onchange="onStationChange()">
+        <option value="0">Bhotekoshi at Timure Tatopani</option>
+        <option value="1">Trishuli River at Shyapruabesi</option>
+        <option value="2">Langtang Khola at Shyapruabesi</option>
+        <option value="3">Trishuli River at Hakubesi</option>
+      </select>
     </div>
-    <input type="hidden" id="rangeHours" value="24">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div>
         <div style="font-size:12px;color:#8e8e93;margin-bottom:5px;">조회 기간</div>
         <div style="padding:10px 12px;background:#f2f2f7;border-radius:10px;font-size:15px;color:#1d1d1f;">최근 24시간</div>
@@ -360,6 +365,13 @@ const PROXY = 'https://alertnepal-proxy.osooson.workers.dev';
 const TK = 'an_token', CR = 'an_cred', ST = 'an_settings';
 let chartInst = null;
 
+const STATIONS = [
+  { name: 'Bhotekoshi at Timure Tatopani',  seriesId: '7627',  gss: 'rts-gss', danger: 1642.0 },
+  { name: 'Trishuli River at Shyapruabesi', seriesId: '12126', gss: 'rts-gss', danger: 1416.0 },
+  { name: 'Langtang Khola at Shyapruabesi', seriesId: '2788',  gss: 'rts-gss', danger: 3.75   },
+  { name: 'Trishuli River at Hakubesi',      seriesId: '661',   gss: 'rts-gss', danger: 1198.9 },
+];
+
 const $ = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
 const hide = id => $(id).classList.add('hidden');
@@ -369,21 +381,33 @@ if (/iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone) {
   show('installHint');
 }
 
+function getSelectedStation() {
+  const idx = parseInt($('stationSelect').value) || 0;
+  return STATIONS[idx];
+}
+
+function onStationChange() {
+  const st = getSelectedStation();
+  $('seriesId').value = st.seriesId;
+  $('gssName').value = st.gss;
+  saveSettings();
+  hide('metricsArea'); hide('chartArea'); hide('errorArea');
+  $('lastUpdatedInline').textContent = '—';
+  fetchData();
+}
+
 function saveSettings() {
   localStorage.setItem(ST, JSON.stringify({
-    seriesId: $('seriesId').value,
-    gssName: $('gssName').value,
-    stationName: $('stationName').value,
-    rangeHours: $('rangeHours').value
+    stationIdx: $('stationSelect').value
   }));
 }
 
 function loadSettings() {
   const s = JSON.parse(localStorage.getItem(ST) || '{}');
-  if (s.seriesId) $('seriesId').value = s.seriesId;
-  if (s.gssName) $('gssName').value = s.gssName;
-  if (s.stationName) $('stationName').value = s.stationName;
-  if (s.rangeHours) $('rangeHours').value = s.rangeHours;
+  if (s.stationIdx !== undefined) $('stationSelect').value = s.stationIdx;
+  const st = getSelectedStation();
+  $('seriesId').value = st.seriesId;
+  $('gssName').value = st.gss;
 }
 
 function setStatus(loggedIn, name) { /* 배지 제거됨 */ }
@@ -455,13 +479,12 @@ function doLogout() {
 }
 
 function getApiUrl() {
-  const sid = $('seriesId').value.trim();
-  const gss = $('gssName').value.trim();
-  const hours = parseInt($('rangeHours').value);
+  const st = getSelectedStation();
+  const hours = 24;
   const now = new Date();
   const from = new Date(now - hours * 3600000);
   const fmt = d => d.toISOString().slice(0, 19);
-  return `${PROXY}/helper/api/observation?series_id=${sid}&date_from=${fmt(from)}&date_to=${fmt(now)}&gssname=${gss}`;
+  return `${PROXY}/helper/api/observation?series_id=${st.seriesId}&date_from=${fmt(from)}&date_to=${fmt(now)}&gssname=${st.gss}`;
 }
 
 async function fetchData() {
@@ -469,7 +492,10 @@ async function fetchData() {
   let token = getToken();
   if (!token) return;
 
-  const stationName = $('stationName').value.trim() || '측정소';
+  const st = getSelectedStation();
+  const stationName = st.name;
+  const DANGER = st.danger;
+
   hide('errorArea'); hide('metricsArea'); hide('chartArea'); hide('lastUpdated');
   show('statusArea'); $('statusMsg').textContent = '데이터 불러오는 중...';
 
@@ -525,7 +551,6 @@ async function fetchData() {
 
     $('maxVal').textContent = Math.max(...vals).toFixed(2) + ' m';
     $('minVal').textContent = Math.min(...vals).toFixed(2) + ' m';
-    const DANGER = 1642.0;
     $('maxVal').style.color = Math.max(...vals) >= DANGER ? '#ff3b30' : '#1d1d1f';
     $('minVal').style.color = Math.min(...vals) >= DANGER ? '#ff3b30' : '#1d1d1f';
     $('chartTitle').textContent = stationName + ' · 수위 변화';
@@ -597,6 +622,11 @@ async function fetchData() {
           ctx.lineWidth = 1.5;
           ctx.setLineDash([6, 4]);
           ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(255,59,48,0.9)';
+          ctx.font = 'bold 10px -apple-system, sans-serif';
+          ctx.textAlign = 'right';
+          ctx.fillText('⚠ 기준 ' + DANGER + 'm', right - 4, yPos - 4);
           ctx.restore();
         }
       }]
