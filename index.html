@@ -603,8 +603,7 @@ async function fetchData() {
     });
 
     hide('statusArea'); show('metricsArea'); show('chartArea');
-    const now2 = new Date();
-    const updStr = now2.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const updStr = latest.t.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     $('lastUpdatedInline').textContent = updStr;
     hide('lastUpdated');
 
